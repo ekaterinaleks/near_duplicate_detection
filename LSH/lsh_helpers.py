@@ -1,6 +1,7 @@
 import re
 from datasketch import MinHash, LeanMinHash, MinHashLSH
 from num2words import num2words
+import pickle
 from settings import *
 
 
@@ -11,7 +12,10 @@ class LshHelper():
         self.shingle_size = SHINGLE_SIZE
         self.lsh_sim_threshold = LSH_SIM_THRESHOLD
         #instantiate Locality Sensitive Hashing object
-        self.lsh_object = MinHashLSH(threshold=self.lsh_sim_threshold, num_perm=self.num_permutations)
+    
+    def instantiate_lsh_object(self):
+        lsh_object = MinHashLSH(threshold=self.lsh_sim_threshold, num_perm=self.num_permutations)
+        return lsh_object
 
     def preprocess(self, review):
         """
@@ -23,10 +27,10 @@ class LshHelper():
             - get rid of multiple white spaces and trailing spaces.
         """
         tmp_string = re.sub(r"[\s\n\r\t\f]+"," ", review)
+        tmp_string = re.sub(r"[$&+#|<>^*%]+", "", tmp_string).lower()
         tmp_string = re.sub(r"(\d+)",
                             lambda x: num2words(int(x.group(0))),
                             tmp_string)
-        tmp_string = re.sub(r"[$&+#|<>^*%]+", "", tmp_string).lower()
         result = re.sub(r"\s+", " ", tmp_string).strip(' ')
         return result
     
@@ -41,7 +45,7 @@ class LshHelper():
         """
         Get a minshash signature for a set of k-shingles.
         """
-        review_shingles = self.to_shingles(self.preprocess(review))
+        review_shingles = self.to_shingles(review)
 
         review_minhash = MinHash(self.num_permutations)
 
@@ -50,5 +54,5 @@ class LshHelper():
             #convert to Lean Minhash for lesser memory footprint and faster deserialization
             #though it doesn't give a significant difference in speed with the current amount of reviews,
             #it will avoid scaling problems in the future.
-            text_lean_minhash = LeanMinHash(review_minhash)
-        return text_lean_minhash
+        text_lean_minhash = LeanMinHash(review_minhash)
+        return pickle.dumps(text_lean_minhash)
