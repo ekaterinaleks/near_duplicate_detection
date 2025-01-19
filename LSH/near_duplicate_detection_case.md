@@ -233,19 +233,7 @@ This makes it about 3K additional reviews detected as near-duplicates in additio
 df_goodreads.loc[[1243209, 1243210, 1243211], ['user_id', 'book_id', 'review_text']]
 ```
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
 
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -284,19 +272,6 @@ df_goodreads.loc[[1243209, 1243210, 1243211], ['user_id', 'book_id', 'review_tex
 df_goodreads.loc[[182963, 182965, 182966], ['user_id', 'book_id', 'review_text']]
 ```
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -335,19 +310,6 @@ df_goodreads.loc[[182963, 182965, 182966], ['user_id', 'book_id', 'review_text']
 df_goodreads.loc[[470436, 470437, 470444, 470450, 470483, 470484, 470485, 470486, 470487, 470490, 470495, 470509, 470510], ['user_id', 'book_id', 'review_text']]
 ```
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -446,19 +408,6 @@ df_goodreads.loc[[470436, 470437, 470444, 470450, 470483, 470484, 470485, 470486
 df_goodreads.loc[[209316, 209365], ['user_id', 'book_id', 'review_text']]
 ```
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -489,19 +438,6 @@ df_goodreads.loc[[209316, 209365], ['user_id', 'book_id', 'review_text']]
 df_goodreads.loc[[1215804, 1215808], ['user_id', 'book_id', 'review_text']]
 ```
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -553,19 +489,6 @@ df_goodreads.query('(book_number > 1) & (review_length > 200)').sort_values('boo
 df_goodreads.loc[[234437,1143023], ['user_id', 'book_id', 'review_text']]
 ```
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -598,19 +521,6 @@ df_goodreads.loc[[234437,1143023], ['user_id', 'book_id', 'review_text']]
 df_goodreads.loc[[932841,853033], ['user_id', 'book_id', 'review_text']]
 ```
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -643,19 +553,6 @@ df_goodreads.loc[[932841,853033], ['user_id', 'book_id', 'review_text']]
 df_goodreads.loc[[732165,893342], ['user_id', 'book_id', 'review_text']]
 ```
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
