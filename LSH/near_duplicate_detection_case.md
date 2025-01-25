@@ -130,7 +130,7 @@ The theory behind the algorithm: [Chapter 3 from "Mining Massive Datasets"](http
 
 Library used: [datasketch](https://github.com/ekzhu/datasketch).
 
-Main functions are in the [lsh_helpers.py](./LSH\lsh_helpers.py).
+Main functions are in the [lsh_helpers.py](https://github.com/ekaterinaleks/near_duplicate_detection/blob/main/LSH/lsh_helpers.py) module.
 
 ***Steps***
 
