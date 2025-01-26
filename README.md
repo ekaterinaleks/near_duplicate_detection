@@ -12,7 +12,7 @@ Library used: [datasketch](https://github.com/ekzhu/datasketch).
 
 Main functions are in the [lsh_helpers.py](https://github.com/ekaterinaleks/near_duplicate_detection/blob/main/LSH/lsh_helpers.py) module.
 
-To view the case study either have a look at [near_duplicate_detection_case in .md format](https://github.com/ekaterinaleks/near_duplicate_detection/blob/main/LSH/near_duplicate_detection_case.md) (converted from .ipynb) available in the repo or ![Static Badge](https://img.shields.io/badge/Open%20in%20Google%20Colab%20-%20%230e7fc0?style=plastic&logo=google%20colab&labelColor=grey)
+To view the case study either have a look at [near_duplicate_detection_case in .md format](https://github.com/ekaterinaleks/near_duplicate_detection/blob/main/LSH/near_duplicate_detection_case.md) (converted from .ipynb) available in the repo or <a href="https://drive.google.com/file/d/1i09hAVCWH3UFpe-V_tptCSPDJV7Dh_QB/view?usp=sharing"> <img alt="Open in Google Colab" src="https://img.shields.io/badge/Open%20in%20Google%20Colab%20-%20%230e7fc0?style=plastic&logo=google%20colab&labelColor=grey"> </a>
 
 Dataset: reviews from Goodreads 📚 taken from [Kaggle 2022 competition](https://www.kaggle.com/competitions/goodreads-books-reviews-290312), the original source is UCSD Book Graph.
 
