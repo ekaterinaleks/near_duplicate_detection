@@ -37,8 +37,9 @@ class LshHelper():
     def to_shingles(self, review):
         """
         Get k-shingle representation of each review.
-        """ 
-        k_shingles = {review[i : (i + self.shingle_size)] for i in range(len(review) - (self.shingle_size + 1))}
+        """
+        k_shingles = {review[i:(i + self.shingle_size)]
+                      for i in range(len(review) - self.shingle_size + 1)}
         return set(k_shingles)
     
     def take_minhash(self, review):
