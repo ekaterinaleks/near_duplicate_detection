@@ -122,7 +122,7 @@ A more basic and straightforward approach like Jaccard similarity that could be 
 
 **Locality-Sensitive Hashing Technique**
 
-Locality-sensitive hashing (LSH) allows us to preselect pairs that are likely to be nead-duplicates by hashing the items and dividing them into buckets of potentially similar texts. This way we can use these probabilistic pairs, keeping in mind that there would be some false positives and false negatives. Or, if we need to maximize precision and get rid of false positives, we can calculate Jaccard similarity only for these candidate pairs and still substantially reduce the computation cost compared to brute-force Jaccard similarity calculation for all possible pais.
+Locality-sensitive hashing (LSH) allows us to preselect pairs that are likely to be near-duplicates by hashing the items and dividing them into buckets of potentially similar texts. This way we can use these probabilistic pairs, keeping in mind that there would be some false positives and false negatives. Or, if we need to maximize precision and get rid of false positives, we can calculate Jaccard similarity only for these candidate pairs and still substantially reduce the computation cost compared to brute-force Jaccard similarity calculation for all possible pairs.
 
 ***Algorithm Used***
 
@@ -212,7 +212,7 @@ df_goodreads = df_goodreads.merge(df_doubles, how='inner', on='review_id')
 ### Let's Have a Look at Some Results
 
 
-**Speaking about with near-identical reviews from the same user but about different books, above we already detected 13788 exact duplicates. Has this number changed after including near-duplicates?**
+**Speaking of near-identical reviews from the same user but about different books, above we already detected 13788 exact duplicates. Has this number changed after including near-duplicates?**
 
 ```python
 #check for near-duplicates posted about the same book by different users
@@ -304,7 +304,7 @@ df_goodreads.loc[[182963, 182965, 182966], ['user_id', 'book_id', 'review_text']
 </table>
 </div>
 
-**Others are just people trying to send traffic to their blogs and don't contribute any meaningful information. However, the text inself varies, making it difficult to detect.** ⬇️
+**Others are just people trying to send traffic to their blogs and don't contribute any meaningful information. However, the text itself varies, making it difficult to detect.** ⬇️
 
 ```python
 df_goodreads.loc[[470436, 470437, 470444, 470450, 470483, 470484, 470485, 470486, 470487, 470490, 470495, 470509, 470510], ['user_id', 'book_id', 'review_text']]
@@ -402,7 +402,7 @@ df_goodreads.loc[[470436, 470437, 470444, 470450, 470483, 470484, 470485, 470486
 </table>
 </div>
 
-**The following two sets reviews are original and later versions of the same piece of writing, most probably posted for different editions. The introductions in both cases are a bit different, making it impossible to detect them as complete duplicates** ⬇️
+**The following two sets of reviews are original and later versions of the same piece of writing, most probably posted for different editions. The introductions in both cases are a bit different, making it impossible to detect them as complete duplicates** ⬇️
 
 ```python
 df_goodreads.loc[[209316, 209365], ['user_id', 'book_id', 'review_text']]
@@ -464,7 +464,7 @@ df_goodreads.loc[[1215804, 1215808], ['user_id', 'book_id', 'review_text']]
 </table>
 </div>
 
-**Speaking about with near-identical reviews from different users but about the same book, above we already detected 601 exact duplicates. Has this changed after including near-duplicates?**
+**Speaking of near-identical reviews from different users but about the same book, above we already detected 601 exact duplicates. Has this changed after including near-duplicates?**
 
 ```python
 #check for near-duplicates posted about the same book by different users
