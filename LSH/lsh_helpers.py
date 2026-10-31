@@ -52,9 +52,8 @@ class LshHelper:
         review_shingles = self.to_shingles(review)
 
         review_minhash = MinHash(self.num_permutations)
-
-        for shingle in review_shingles:
-            review_minhash.update(shingle.encode("utf8"))
+        review_minhash.update_batch([shingle.encode("utf8")
+                                     for shingle in review_shingles])
 
         # Lean MinHash: smaller memory footprint and faster deserialization,
         # negligible now but avoids scaling problems in the future.
