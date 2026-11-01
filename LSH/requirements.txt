@@ -4,3 +4,4 @@ pandas
 pandarallel
 kaggle
 jupyter
+tqdm
