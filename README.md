@@ -1,4 +1,6 @@
 # Near-Duplicate Detection
+*Created in January 2025, updated in October 2026.*
+
 Finding near-duplicate texts at scale with **MinHash + Locality-Sensitive Hashing**, applied to 1.38M Goodreads reviews in ![Static Python Badge](https://img.shields.io/badge/python-FBD343?style=plastic&logo=python&logoColor=234989bc).
 
 ## 🔎 Key Results
@@ -20,7 +22,7 @@ Library used: [datasketch](https://github.com/ekzhu/datasketch).
 
 Main functions are in the [lsh_helpers.py](https://github.com/ekaterinaleks/near_duplicate_detection/blob/main/LSH/lsh_helpers.py) module.
 
-To view the case study, open the [notebook](https://github.com/ekaterinaleks/near_duplicate_detection/blob/main/LSH/near_duplicate_detection_case.ipynb), its [.md version](https://github.com/ekaterinaleks/near_duplicate_detection/blob/main/LSH/near_duplicate_detection_case.md) or <a href="https://drive.google.com/file/d/1i09hAVCWH3UFpe-V_tptCSPDJV7Dh_QB/view?usp=sharing"> <img alt="Open in Google Colab" src="https://img.shields.io/badge/Open%20in%20Google%20Colab%20-%20%230e7fc0?style=plastic&logo=google%20colab&labelColor=grey"> </a>
+To view the case study, open the [notebook](https://github.com/ekaterinaleks/near_duplicate_detection/blob/main/LSH/near_duplicate_detection_case.ipynb), its [.md version](https://github.com/ekaterinaleks/near_duplicate_detection/blob/main/LSH/near_duplicate_detection_case.md) or <a href="https://drive.google.com/file/d/1h8nfuS_QbfEw_RPYohFHzugeMu5AQxDF/view?usp=sharing"> <img alt="Open in Google Colab" src="https://img.shields.io/badge/Open%20in%20Google%20Colab%20-%20%230e7fc0?style=plastic&logo=google%20colab&labelColor=grey"> </a>
 
 Dataset: reviews from Goodreads 📚 taken from [Kaggle 2022 competition](https://www.kaggle.com/competitions/goodreads-books-reviews-290312), the original source is UCSD Book Graph.
 
