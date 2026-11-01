@@ -22,6 +22,32 @@ In general, detecting near duplicates can be very beneficial for optimization pu
 
 Apart from deduplication purposes as an optimization problem, it could be used for anomaly detection as well. Detecting users that leave similar reviews for different items or different users leaving almost exactly the same comment about specific items could be useful for moderation purposes or excluding some interactions from recommendation system training as unreliable or uninformative (in case of suspicion of review or comment use as advertisement channel or fake info campaigns).
 
+### Setup (Colab)
+Skip these two cells when running locally. On Colab, add `KAGGLE_API_TOKEN` to Secrets (key icon) and put this folder's files in Google Drive.
+
+```python
+#Kaggle API token from Colab Secrets and access to Google Drive
+import os
+from google.colab import drive, userdata
+
+os.environ["KAGGLE_API_TOKEN"] = userdata.get("KAGGLE_API_TOKEN")
+drive.mount('/content/drive')
+```
+
+```text
+Drive already mounted at /content/drive; to attempt to forcibly remount, call drive.mount("/content/drive", force_remount=True).
+```
+
+```python
+#install dependencies
+%cd "/content/drive/MyDrive/Colab Notebooks/Shared GitHub Colabs"
+!pip install -q -r requirements.txt
+```
+
+```text
+/content/drive/MyDrive/Colab Notebooks/Shared GitHub Colabs
+```
+
 ```python
 #libraries
 import pandas as pd
@@ -29,18 +55,24 @@ import pickle
 import itertools
 import multiprocessing as mp
 from pandarallel import pandarallel
+from tqdm.auto import tqdm
 import zipfile
+import gc
 
 #modules
 import lsh_helpers as lsh
+from settings import CHUNK_SIZE, JACCARD_THRESHOLD
 
 #miscellanea
 pandarallel.initialize(nb_workers=mp.cpu_count(), progress_bar=False)
 pd.options.mode.chained_assignment = None
 pd.set_option('max_colwidth', None)
 ```
-        INFO: Pandarallel will run on 8 workers.
-        INFO: Pandarallel will use Memory file system to transfer data between the main process and workers.
+
+```text
+INFO: Pandarallel will run on 8 workers.
+INFO: Pandarallel will use Memory file system to transfer data between the main process and workers.
+```
 
 ### Get the Data
 We will be using a dataset of reviews from Goodreads 📚 taken from [Kaggle 2022 competition](https://www.kaggle.com/competitions/goodreads-books-reviews-290312) originally downloaded from UCSD Book Graph. This dataset wasn't deduplicated as its later version currently available at [Goodreads Book Graph Datasets](https://mengtingwan.github.io/data/goodreads).
@@ -49,12 +81,14 @@ We will be using a dataset of reviews from Goodreads 📚 taken from [Kaggle 202
 #download using Kaggle API
 ! kaggle competitions download -c goodreads-books-reviews-290312
 ```
-        Downloading goodreads-books-reviews-290312.zip to /home/ekaterina_axolotl/near-duplicate-detection
-        100%|███████████████████████████████████████▉| 634M/635M [00:17<00:00, 41.7MB/s]
-        100%|████████████████████████████████████████| 635M/635M [00:17<00:00, 37.9MB/s]
+
+```text
+Warning: Looks like you're using an outdated `kaggle` version (installed: 2.0.2), please consider upgrading to the latest version (2.2.5)
+goodreads-books-reviews-290312.zip: Skipping, found more recently modified local copy (use --force to force download)
+```
 
 ```python
-#read into df only two files from the zip 
+#read into df only two files from the zip
 with zipfile.ZipFile('goodreads-books-reviews-290312.zip', 'r') as folder:
     with folder.open('goodreads_test.csv') as file:
         df_goodreads_test = pd.read_csv(file)
@@ -73,37 +107,64 @@ df_goodreads = pd.concat([df_goodreads_test, df_goodreads_train])
 ```python
 print(f'The dataframe has {df_goodreads.shape[0]} rows and {df_goodreads.shape[1]} columns.')
 ```
- ╰⪼ The dataframe has 1378033 rows and 10 columns.
+
+```text
+The dataframe has 1378033 rows and 10 columns.
+```
 
 ```python
-print(f'Are there any complete duplicates with identical data in all columns? - {df_goodreads.duplicated().any()}')
+print(f'Are there any complete duplicates with identical data in all columns?\n{df_goodreads.duplicated().any()}')
 ```
-╰⪼ Are there any complete duplicates with identical data in all columns? - False
+
+```text
+Are there any complete duplicates with identical data in all columns?
+False
+```
 
 ```python
-print(f'Are there any duplicated review ids? - {df_goodreads.duplicated(['review_id']).any()}')
+print(f'Are there any duplicated review ids?\n{df_goodreads.duplicated(['review_id']).any()}')
 ```
-╰⪼ Are there any duplicated review ids? - False
+
+```text
+Are there any duplicated review ids?
+False
+```
 
 ```python
-print(f'How many duplicated review texts are there? - {df_goodreads.duplicated(['review_text'], keep=False).sum()}') 
+print(f'How many duplicated review texts are there?\n{df_goodreads.duplicated(['review_text'], keep=False).sum()}')
 ```
-╰⪼ How many duplicated review texts are there? - 20539
+
+```text
+How many duplicated review texts are there?
+20539
+```
 
 ```python
-print(f'How many duplicated review texts are there from the same user about different books? - {df_goodreads.duplicated(['review_text', 'user_id'], keep=False).sum()}')
+print(f'How many duplicated review texts are there from the same user about different books?\n{df_goodreads.duplicated(['review_text', 'user_id'], keep=False).sum()}')
 ```
-╰⪼ How many duplicated review texts are there from the same user about different books? - 13788
+
+```text
+How many duplicated review texts are there from the same user about different books?
+13788
+```
 
 ```python
-print(f'How many duplicated review texts are there from different users about the same book? - {df_goodreads.duplicated(['review_text', 'book_id'], keep=False).sum()}')
+print(f'How many duplicated review texts are there from different users about the same book?\n{df_goodreads.duplicated(['review_text', 'book_id'], keep=False).sum()}')
 ```
-╰⪼ How many duplicated review texts are there from different users about the same book? - 601
+
+```text
+How many duplicated review texts are there from different users about the same book?
+601
+```
 
 ```python
-print(f'Are there any duplicated review texts from the same user about the same book? - {df_goodreads.duplicated(['review_text', 'book_id','user_id']).any()}')
+print(f'Are there any duplicated review texts from the same user about the same book?\n{df_goodreads.duplicated(['review_text', 'book_id','user_id']).any()}')
 ```
-╰⪼ Are there any duplicated review texts from the same user about the same book? - False
+
+```text
+Are there any duplicated review texts from the same user about the same book?
+False
+```
 
 ### Detect near-Duplicates: Case Study and Algorithm
 **Case Study Dataset**
@@ -122,15 +183,13 @@ A more basic and straightforward approach like Jaccard similarity that could be 
 
 **Locality-Sensitive Hashing Technique**
 
-Locality-sensitive hashing (LSH) allows us to preselect pairs that are likely to be nead-duplicates by hashing the items and dividing them into buckets of potentially similar texts. This way we can use these probabilistic pairs, keeping in mind that there would be some false positives and false negatives. Or, if we need to maximize precision and get rid of false positives, we can calculate Jaccard similarity only for these candidate pairs and still substantially reduce the computation cost compared to brute-force Jaccard similarity calculation for all possible pais.
+Locality-sensitive hashing (LSH) allows us to preselect pairs that are likely to be near-duplicates by hashing the items and dividing them into buckets of potentially similar texts. This way we can use these probabilistic pairs, keeping in mind that there would be some false positives and false negatives. Or, if we need to maximize precision and get rid of false positives, we can calculate Jaccard similarity only for these candidate pairs and still substantially reduce the computation cost compared to brute-force Jaccard similarity calculation for all possible pairs.
 
 ***Algorithm Used***
 
 The theory behind the algorithm: [Chapter 3 from "Mining Massive Datasets"](http://infolab.stanford.edu/~ullman/mmds/ch3n.pdf).
 
 Library used: [datasketch](https://github.com/ekzhu/datasketch).
-
-Main functions are in the [lsh_helpers.py](https://github.com/ekaterinaleks/near_duplicate_detection/blob/main/LSH/lsh_helpers.py) module.
 
 ***Steps***
 
@@ -169,11 +228,13 @@ df_goodreads.index = df_goodreads['review_id']
 ```python
 #take minhash of all reviews
 it = iter(df_goodreads.index)
-chunk = list(itertools.islice(it, 16384))
-while chunk:
-    df_goodreads.loc[chunk, 'minhash'] = df_goodreads.loc[chunk, 'clean_review_text'].parallel_apply(lsh_instance.take_minhash)
-    chunk = list(itertools.islice(it, 16384))
-    df_goodreads.to_pickle('goodreads_minhash.pkl')
+with tqdm(total=len(df_goodreads), desc='minhash', unit='review') as progress:
+    chunk = list(itertools.islice(it, CHUNK_SIZE))
+    while chunk:
+        df_goodreads.loc[chunk, 'minhash'] = df_goodreads.loc[chunk, 'clean_review_text'].parallel_apply(lsh_instance.take_minhash)
+        progress.update(len(chunk))
+        chunk = list(itertools.islice(it, CHUNK_SIZE))
+df_goodreads.to_pickle('goodreads_minhash.pkl')
 ```
 
 ```python editable=true slideshow={"slide_type": ""}
@@ -211,8 +272,7 @@ df_goodreads = df_goodreads.merge(df_doubles, how='inner', on='review_id')
 
 ### Let's Have a Look at Some Results
 
-
-**Speaking about with near-identical reviews from the same user but about different books, above we already detected 13788 exact duplicates. Has this number changed after including near-duplicates?**
+**Speaking of near-identical reviews from the same user but about different books, above we already detected 13788 exact duplicates. Has this number changed after including near-duplicates?**
 
 ```python
 #check for near-duplicates posted about the same book by different users
@@ -221,19 +281,21 @@ df_goodreads['user_number'] = df_goodreads.groupby('user_group')['user_group'].t
 ```
 
 ```python
-print(f'How many duplicated and near-duplicated review texts are there from the same user about different books? - {df_goodreads.query('user_number > 1').shape[0]}')
+print(f'How many near-duplicated review texts are there from the same user about different books?\n{df_goodreads.query('user_number > 1').shape[0]}')
 ```
-╰⪼ How many duplicated and near-duplicated review texts are there from the same user about different books? - 16180
 
-This makes it about 3K additional reviews detected as near-duplicates in addition to complete duplicates.
+```text
+How many near-duplicated review texts are there from the same user about different books?
+15959
+```
 
 **In some cases the initial wording makes it seem different (and impossible to spot without near-duplicate detection), but the core review is still the same and can be processed as one piece.** ⬇️
 
 ```python
 df_goodreads.loc[[1243209, 1243210, 1243211], ['user_id', 'book_id', 'review_text']]
 ```
-<div>
 
+<div>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -271,6 +333,7 @@ df_goodreads.loc[[1243209, 1243210, 1243211], ['user_id', 'book_id', 'review_tex
 ```python
 df_goodreads.loc[[182963, 182965, 182966], ['user_id', 'book_id', 'review_text']]
 ```
+
 <div>
 <table border="1" class="dataframe">
   <thead>
@@ -304,11 +367,12 @@ df_goodreads.loc[[182963, 182965, 182966], ['user_id', 'book_id', 'review_text']
 </table>
 </div>
 
-**Others are just people trying to send traffic to their blogs and don't contribute any meaningful information. However, the text inself varies, making it difficult to detect.** ⬇️
+**Others are just people trying to send traffic to their blogs and don't contribute any meaningful information. However, the text itself varies, making it difficult to detect.** ⬇️
 
 ```python
 df_goodreads.loc[[470436, 470437, 470444, 470450, 470483, 470484, 470485, 470486, 470487, 470490, 470495, 470509, 470510], ['user_id', 'book_id', 'review_text']]
 ```
+
 <div>
 <table border="1" class="dataframe">
   <thead>
@@ -402,11 +466,12 @@ df_goodreads.loc[[470436, 470437, 470444, 470450, 470483, 470484, 470485, 470486
 </table>
 </div>
 
-**The following two sets reviews are original and later versions of the same piece of writing, most probably posted for different editions. The introductions in both cases are a bit different, making it impossible to detect them as complete duplicates** ⬇️
+**The following two sets of reviews are original and later versions of the same piece of writing, most probably posted for different editions. The introductions in both cases are a bit different, making it impossible to detect them as complete duplicates** ⬇️
 
 ```python
 df_goodreads.loc[[209316, 209365], ['user_id', 'book_id', 'review_text']]
 ```
+
 <div>
 <table border="1" class="dataframe">
   <thead>
@@ -437,6 +502,7 @@ df_goodreads.loc[[209316, 209365], ['user_id', 'book_id', 'review_text']]
 ```python
 df_goodreads.loc[[1215804, 1215808], ['user_id', 'book_id', 'review_text']]
 ```
+
 <div>
 <table border="1" class="dataframe">
   <thead>
@@ -464,23 +530,106 @@ df_goodreads.loc[[1215804, 1215808], ['user_id', 'book_id', 'review_text']]
 </table>
 </div>
 
-**Speaking about with near-identical reviews from different users but about the same book, above we already detected 601 exact duplicates. Has this changed after including near-duplicates?**
+**Speaking of near-identical reviews from different users but about the same book, above we already detected 601 exact duplicates. Has this changed after including near-duplicates?**
 
 ```python
 #check for near-duplicates posted about the same book by different users
 df_goodreads['book_group'] = df_goodreads.groupby(['book_id', 'set_of_doubles']).ngroup()
 df_goodreads['book_number'] = df_goodreads.groupby('book_group')['book_group'].transform(lambda x: len(x))
-print(f'How many duplicated and near-duplicated review texts are there from different users about the same book? - {df_goodreads.query('book_number > 1').shape[0]}')
+print(f'How many near-duplicated review texts are there from different users about the same book?\n{df_goodreads.query('book_number > 1').shape[0]}')
 ```
-╰⪼ How many near-duplicated review texts are there from different users about the same book? - 1347
 
-This makes it 746 additional near-duplicates.
+```text
+How many near-duplicated review texts are there from different users about the same book?
+1098
+```
 
 ```python
-#let's check some longer reviews that are unlikely tobe a typical short "review to come" placeholder
+#let's check some longer reviews that are unlikely to be a typical short "review to come" placeholder
 df_goodreads['review_length'] = df_goodreads['review_text'].apply(len)
 df_goodreads.query('(book_number > 1) & (review_length > 200)').sort_values('book_group')[['user_id', 'book_id', 'review_text']]
 ```
+
+<div>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>user_id</th>
+      <th>book_id</th>
+      <th>review_text</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>234437</th>
+      <td>92ec07eb6116e956d36d28a6a63a1eea</td>
+      <td>2175</td>
+      <td>This novel had been on my TBR list for years before I finally got around to reading it while on one of my rare "classics" kicks. \n Unfortunately, for me, it was hardly worth the wait. The tale was far too introspective and dragging for my taste, and ultimately depressing. \n Although I confess a penchant for happy endings, an emotion filled tragedy can be satisfying in its own way. (Wuthering Heights comes immediately to mind). \n Unfortunately even with its tragic ending, I was unmoved, finding that I could neither like, nor pity any of the characters. \n Madame Bovary left me craving a good dose of Emily Bront.</td>
+    </tr>
+    <tr>
+      <th>1143023</th>
+      <td>6730d0d062328bbfb874ad9c5ce02f33</td>
+      <td>2175</td>
+      <td>This novel had been on my TBR list for years before I finally got around to reading it while on one of my rare "classics" kicks. \n Unfortunately, for me, it was hardly worth the wait. The tale was far too introspective and dragging for my taste, and ultimately depressing. \n Although I confess a penchant for happy endings, an emotion filled tragedy can be satisfying in its own way. (Wuthering Heights comes immediately to mind). \n Unfortunately even with its tragic ending, I was unmoved, finding that I could neither like, nor pity any of the characters. \n Madame Bovary left me craving a good dose of Emily Bronte.</td>
+    </tr>
+    <tr>
+      <th>1205978</th>
+      <td>8d296efe4f23f9d2747ef37e1c38b173</td>
+      <td>14383</td>
+      <td>Kaderin the cold-hearted has spent the last thousand years not feeling. She lost them when she watched her sisters die by the same Horde vampire she showed mercy to in battle mere seconds before. Believing her lack of feelings are a blessing she hasn't felt anything since. No happiness, joy, fear, or sadness, just nothing. Now finding herself in Sebastian Wroth's home she can't seem to bring herself to kill him. She see's something in him. Something she just can't bring herself to end. \n This is the third book in the Immortals After Dark series and I'm really enjoying them I just have one small complaint and that's the fact that the last three books seem to have the same formula. All of the girls have had the same excuse time and time again. They push and push and push the men away and the men are relentless in their fight, never giving up. It's endearing and irritating at the same time. \n This one did have me thinking and thinking about time travel and how it just doesn't make sense no matter what way you look at it. I'm glad that Cole dealt with that and I feel like it was handled in the best possible way. \n However, I obviously have to continue on because I can't stop thinking about poor Bowen. He too, was competing in the Hie for a chance to go back and save his mate. I couldn't stop thinking about how much he's suffered.</td>
+    </tr>
+    <tr>
+      <th>1363866</th>
+      <td>3693bb4f1062b659a354848cf11ca313</td>
+      <td>14383</td>
+      <td>Kaderin the Cold-Hearted, has spent the last thousand years not feeling. She lost them when she watched her sisters die by the same Horde vampire she showed mercy to in battle mere seconds before. Believing her lack of feelings are a blessing she hasn't felt anything since. No happiness, joy, fear, or sadness, just nothing. Now finding herself in Sebastian Wroth's home, a vampire, she can't seem to bring herself to kill him. She see's something in him. Something she just can't bring herself to end. \n This is the third book in the Immortals After Dark series and I'm really enjoying them I just have one small complaint and that's the fact that the last three books seem to have the same formula. All of the girls have had the same excuse time and time again. They push and push and push the men away and the men are relentless in their fight, never giving up. It's endearing and irritating at the same time. \n This one did have me thinking about time travel and how it just doesn't make sense no matter what way you look at it. I'm glad that Cole dealt with that and I feel like it was handled in the best possible way. I must hand it to her though, even after I put the book down I was contemplating and coming up with how it couldn't possible. \n However, I obviously have to continue on in this series because I can't stop thinking about poor Bowen. He too, was competing in the Hie for a chance to go back and save a loved one. I couldn't stop thinking about how much he's suffered.</td>
+    </tr>
+    <tr>
+      <th>702117</th>
+      <td>b6aceda54f217ed2f7148239fef3fca5</td>
+      <td>14384</td>
+      <td>I purchased both book 1 (The Warlord Wants Forever) and book 2 A Hunger Like No Other (which is labeled book 1, but really isn't) at reduced prices to give IAD a try. I haven't read allot of series PNR so I wasn't really expecting to like it; and what a pleasant surprise it has been. \n Getting into Cole's world took a little while (at first I found the whole idea of "fated" mates" a little hokey) but it works well with what seems to be her basic love/hate trope (which I personally like). I thought there was a nice balance between romance and plot (sort of 50/50). I am also enjoying the way characters and story lines from the previous book are carried forwarded (although I guess all series are like that). It was nice to see Myst and Wroth from TWWF making an appearance in the story and to see the continued development of all of Emma's Valkyrie aunts. \n Emma turned out to be a strong character and I enjoyed her transformation from "Emma the Timid" to (SPOILER) "Emma the King Killer" (END "SPOILER"). I wasn't particularity taken with Lachlain initially, he rather came across as a blundering oaf...but then considering he was coming off 150 years of hideous torture and was temporarily insane...I accepted he was not at his best. He and Emma ended up being pretty sweet together and it's hard to deny that a Scottish accent isn't hot; but I would still take Wroth any day of the week. \n AHLNO was fun and I already ordered the next book in the series.</td>
+    </tr>
+    <tr>
+      <th>...</th>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>1051539</th>
+      <td>edce295372f8b4a773a1c74a24bc7268</td>
+      <td>24895218</td>
+      <td>4 LOVING STARS!!!! \n What to do when the stranger you met and spent the most amazing weekend with ever turns out to be your stepbrother? \n Aria met a Mystery man a year ago and spent a weekend with him, only for her Prince Charming to up and leave. Some time after that, her mother meets the man of her dreams and weds. A year later, it is finally time for Aria to meet her stepbrothers, and when she does, she realizes the eldest is her Mystery Man...the Mystery Man who took her virginity a year earlier...her mystery man! And Mystery Man has a name...BLADE. \n Trying to fight what was never done between them proves hard. Aria has experienced devastating pain in her life, pain that has her screaming in the mornings. She won't be able to deal if he leaves again, but she doesn't know how to not want him, and frankly, neither does he. So, they both fight the intense attraction, knowing that being with each other is wrong.......right? \n ******* \n These stepbrother books are KILLING me! Lol!!! Step-lover was such a beautiful, heartbreaking and intense love story! I am so happy that I read this! I enjoyed watching things develop between Aria and Blade, I could feel their chemistry with every turn of the page. This was an intense build between the two and whenever they gave in to what they were feeling, it was dynamite! \n As much as the book speaks of insta-love, it didn't feel like that to me. It took a year for them to see each other again, so it was like a slow burn for both of them. It was obvious that neither of them got the other out of their head or heart. Both Aria and Blade were strong characters. I never felt like they were stupid or petty. I actually felt sorry for Aria quite a bit, only because I could feel her pain from not getting the man she loves. The fight they had to go through to get where they got at the end was so sad for me to read. I wish I could have waved a magic wand &amp; everything was right for them. Sadness was palpable, desperation was so tangible, and the love.......jeez, their love and passion: enviable. \n The secondary characters added the next bit of amazing this book needed. It would be nothing without these characters: the best friend (Mel), the other brothers/stepbrothers (Brody &amp; Lee), and the parents/stepdad (Nancy &amp; Jack). Hell, even Bryce, Yates &amp; Peyton, minor characters, had major roles to play in the development of the story, as well as the outcome! I look forward to Mel and Brody's story...Miss Jewel can't hurry fast enough with that one! ^_^ \n I was very impressed with the writing. So easy to read, coherent, well-worded with probably two or three "mistakes". I wasn't even looking for them, I was so engrossed in the story! Great character development, great back story for both (that you have to read to understand). My only qualm is that I NEEDED more. Not just more story since I didn't want it to end, but MORE of a conclusion/resolution. The ending felt abrupt, no buildup. I felt like there was more that could be said, more that could have happened, more intricacies to their relationship that could have been revealed to give the story that much more of an edge....which would explain my 4 stars. I guess I will have to wait for Mel and Brody's book to find out how things further go with Ari and Blade, but I do hope they get a conclusion novella for themselves because I really think they need a proper happy ending. :) \n The quote at the top represents all this story is. So go in with an open heart. One-click IMMEDIATELY, you won't regret it, unless you're an asshole/troll. -_-</td>
+    </tr>
+    <tr>
+      <th>558462</th>
+      <td>1a24bac964b67d5afe7175b79573d1a6</td>
+      <td>30818614</td>
+      <td>The Room Mate (Room Mates #1) by Kendall Ryan \n 4 stars!!! \n "He might be young, twenty-four years to my twenty-eight, but his eyes spoke of wisdom and maturity." \n Kendall Ryan delivers a fun, flirty read that ticks all those boxes for a hopeless romantic like me. While, on first impressions, Cannon should be someone you dislike for his ego alone, you cannot help but fall in love with our doctor in the making and it does seem that it isn't his ego talking, but it is his reality. \n Cannon is in his last year of residency before he becomes a fully qualified doctor. Cannon is extremely professional and motivated and his quest is only fuelled by his inherent belief that being the man of the family, he has to be there to support his mom and sister...cue ovaries melting. Cannon tries his hardest to stay away from the opposite sex, it seems that every time he sleeps with one, they instantly fall in love and become some crazed stalker. Even one night stands are off-limits for him. While this did give me the proverbial eye roll, it is a novel spin and led to some hilarious scenes as well as some not. \n "Growing up the way I did, I guess it shaped my goals. Now I'm just perfecting the art of making lemonade." \n Paige is Cannon's sisters best friend...older best friend. Cannon has lusted over Paige for over a decade, she has been the object of his teenage fantasies for years but they haven't met in the flesh for about five years. A lot changes in five years. After another stalker issue, Cannon finds himself homeless and only needing a place to stay for a couple of months, Cannon's sister sets him up to stay with Paige. \n When these two meet, you can tell that any suppressed lust Cannon had for Paige soon resurfaced and it seems that Paige wasn't immune either. This was a forbidden romance of sorts, not only because Paige was a few years older than Cannon but the fact that Cannon was her best friends little brother, a little brother that she was extremely protective over. With careers and friendships telling them that this was definitely a bad idea...what happens when chemistry tells you it isn't? \n "...he was the realest, best, brightest thing in my world, and I hated that we would never be more." \n This was one really enjoyable read that seemed to end as quick as it began. Totally immersed in their story the pages flowed effortlessly and with only a little drama the pacing was perfect. I loved their relationship, the dialogue and how they seamlessly converged into each other's lives. This was a cute read, relatable, believable and heart-warming. \n "Nothing about us was a mistake." \n www.theromancecover.com</td>
+    </tr>
+    <tr>
+      <th>1217197</th>
+      <td>fccc5f50c862761742285b249b45bc38</td>
+      <td>30818614</td>
+      <td>Thank you Donna C from Amazon \n "He might be young, twenty-four years to my twenty-eight, but his eyes spoke of wisdom and maturity." \n Kendall Ryan delivers a fun, flirty read that ticks all those boxes for a hopeless romantic like me. While, on first impressions, Cannon should be someone you dislike for his ego alone, you cannot help but fall in love with our doctor in the making and it does seem that it isn't his ego talking, but it is his reality. \n Cannon is in his last year of residency before he becomes a fully qualified doctor. Cannon is extremely professional and motivated and his quest is only fueled by his inherent belief that being the man of the family, he has to be there to support his mom and sister...cue ovaries melting. Cannon tries his hardest to stay away from the opposite sex, it seems that every time he sleeps with one, they instantly fall in love and become some crazed stalker. Even one night stands are off-limits for him. While this did give me the proverbial eye roll, it is a novel spin and led to some hilarious scenes as well as some not. \n "Growing up the way I did, I guess it shaped my goals. Now I'm just perfecting the art of making lemonade." \n Paige is Cannon's sisters best friend...older best friend. Cannon has lusted over Paige for over a decade, she has been the object of his teenage fantasies for years but they haven't met in the flesh for about five years. A lot changes in five years. After another stalker issue, Cannon finds himself homeless and only needing a place to stay for a couple of months, Cannon's sister sets him up to stay with Paige. \n When these two meet, you can tell that any suppressed lust Cannon had for Paige soon resurfaced and it seems that Paige wasn't immune either. This was a forbidden romance of sorts, not only because Paige was a few years older than Cannon but the fact that Cannon was her best friends little brother, a little brother that she was extremely protective over. With careers and friendships telling them that this was definitely a bad idea...what happens when chemistry tells you it isn't? \n "...he was the realest, best, brightest thing in my world, and I hated that we would never be more." \n This was one really enjoyable read that seemed to end as quick as it began. Totally immersed in their story the pages flowed effortlessly and with only a little drama the pacing was perfect. I loved their relationship, the dialogue and how they seamlessly converged into each other's lives. This was a cute read, relatable, believable and heart-warming. \n "Nothing about us was a mistake."</td>
+    </tr>
+    <tr>
+      <th>1004333</th>
+      <td>874507ab349b2258eaecd967f4573c00</td>
+      <td>36252773</td>
+      <td>Joint review with my blog partner, Tori: \n Tori: I have never been one for the daddy kink. Most erotic romances I've encountered portray it as 24/7 acting like a baby and that's just not for me. However, I have been a fan of Eve Dangerfield's racy contemps since reading her debut, Degrees of Control, and more than willing to give this one a shot. And I'm so glad I did. Act Your Age is a sexy, humorous, and bittersweet opposite attraction erotic romance that places its focus more on the characters and their issues rather than the kink the storyline is built around. Dangerfield has a fantastic voice that creates a sense of comraderie between the reader and her characters. She writes about everyday people, with regular lives and problems who like kinky sex. The angst levels are fairly low with some drama but nothing over the top \n Heavily character driven, Dangerfield introduces us to our hero and heroine, Ty Henderson and Kate McGrath, setting up the storyline while allowing us ample time to get to know them. I found both of them to be delightfully messy contradictions. I laughed while cringing at the two of them more often than not at their awkward and HAWT scenes. Ty works at a large engineering firm where Kate was recently hired on as an engineer. Though he isn't her immediate boss, he is higher up the chain of command than she is. Still recovering from a bad break up, Ty stomps around like a grumpy butthead with one leg in the grave. Drinking too much and avoiding the home he shared with his cheating ex fiancee, Ty's attraction to Kate only makes him angry and he directs all that anger towards her. \n Ty didn't think Middleton was a great girl. He thought Middleton was a pain in the ass. Waltzing around with her shiny hair and long legs and her throaty voice, being cuter than a fistful of buttons. Where did she get off? \n Kate is young, energetic, and flints around like Pollyanna on acid. She indulges in juvenile clothing and brings homemade baked good to the office on a daily basis. Suffering from ADHD that resulted in some bad childhood behavior and teasing, Kate now takes Ritalin and quietly pines for some positive attention from Ty. \n That he didn't like her always would have hurt. That he didn't like her and she was so hopelessly attracted to him burned. In the kind of all-encompassing obsession she'd only ever read about in books, but unlike books, her obsession never went anywhere or did anything. She just got sweaty palms whenever she saw him and it made her work-life very awkward. Her obsession wasn't even original. Everyone had a crush on Tyler Henderson. Women, gay men, straight men, more perceptive animals. It was like having a crush on a Hemsworth brother--it made you basic as hell \n What did you think of Kate and Ty in the beginning, Mandi? \n Mandi: Before I get into our joint review, I wanted to take a quick minute to highlight what this author and Kate, our heroine, means when she says she likes daddy kink. Maybe you have never read this kink, or you have a preconceived notion as to what it is. So in Kate's words: \n When I imagine daddy-daughter play, I imagine entering a state of mind in which I'm entirely innocent and the man I'm with corrupts and disciplines me. To me, this is power play, not a desire to experience incest or genuine trauma. I'm NOT into the extreme aspects of age-play or daddy-daughter kink (infantilization, pacifiers, baby-talk, or nappies). I consider myself more of a submissive with a twist. \n Let me note, their main form of role-playing is Ty is the "step dad" and Kate is the "teenage daughter home alone while mom is at work." There are times Kate pretends she doesn't want her "step dad" to have sex with her and he forces himself. It's all 100% consensual and they are both totally into it - but I wanted to make sure you know that, in case that is not your jam. \n I ended up liking this book a lot. It's over the top sometimes. The book got nicknamed, "The baseball bat" book on Twitter because I tweeted this quote: \n Erect, his penis was approximately the width of a baseball bat, properly and ridiculously huge. "What the heck...?" \n Yes, that is some girth but don't let this over the top description deter you. This is a very erotic, and explicit book but it's not all just sex - the relationship is built up very well. But first, the sex. They go heavy into role-playing and Kate calling Ty daddy. Remember they are in role play here.... \n "Say that again." Kate's heart leapt into her mouth. Was he angry? Was he going to yell at her? "I-I like sucking your cock." \n "Little girl." His voice was icy with disdain. "Say what you just called me again." \n But she couldn't. Instead she asked, "Are you mad at me?" \n There was a silence more loaded than all the guns in a gun-nut's gun locker. Then he spoke. \n "No, but I want you to say it again." \n "But I--" \n "Not what I want to hear, sweetheart." He gently forced her head back, not hard, but firm. His manhandling and the sense of powerlessness it arose in her made Kate quiver. How did you know? she wanted to ask. I never told you, how did you know? But, she supposed in the scheme of things that didn't matter as much as following orders. She swallowed. \n "I like sucking your cock, Daddy." \n I could go on and on with sex quotes - there are a lot! But there is more to this story. The author takes her time letting us get to know Kate. From initial reaction, I thought disney princess. But as the author peels back her layers - we learn she was diagnosed with severe ADHD when she was seventeen and has been on Ritalin ever since. She didn't have that great of a childhood. She struggles with friendships. She struggles with being assertive and doesn't really know who she is. \n On the other hand, Ty was dumped by his fiancee two years prior for not wanting to have kids. He has had a hard time getting over her. He likes to be assertive and in control and when he does finally go in the bedroom with Kate, he can't believe he actually found someone who can fulfill his desires - same with her. \n Kate eventually finds female friendships, and loses some too - for so many pages devoted to spanking, we dive into complicated, personal issues as well. I appreciated that. \n Tori, aside from the erotic scenes, did you find their relationship solid and well done? \n Tori: Yes. I loved their relationship. The imperfections, the miscommunications, and all the jagged little edges only made it more real and endearing to me. Dangerfield doesn't pull any punches with this couple as she guides us through their relationship using dual narrative. We see them at the best and worst. I enjoy when an author tries to convince me two people who seem completely wrong for one another are actually perfect together. Dangerfield gently cuts through all the artifice and layers, letting us see what she's always known-that our protagonists are indeed perfect for one another. \n Ty and Kate grow so much during this story. Both of them have problems with communication and their sexuality. Kate is already working towards inner acceptance while Ty is just beginning. Their age difference and working relationship is a huge stumbling block for Ty. He's already lost one woman he loved and he is scared to take another risk. \n Middleton crawled into my hotel bed because she's attracted to old men and I was in the right place at the right time. We start dating. The sex is good. Her family think she's insane for fucking someone old enough to be her dad. All my friends think I'm having a mid-life crisis. People whisper behind our backs at parties. The age gap sounds bad and she's so baby-faced it looks worse. The fact I used to be her boss is the cherry on top of the shit sundae. Doesn't stop us from fucking one another, but the smell of it taints everything like when there's a dead rat in your ventilation. A few years pass, I get even fucking older, my hair starts to fall out, and my dick doesn't work. Middleton meets a guy her own age. She leaves me. I die alone. \n The erotic sexual components are exquisitely written and blend perfectly with the building romance and main storyline. Dangerfield hits all the emotional tones in here. While their role playing starts out as just a way to scratch each others itches, they soon they begin to take on the personalities in those roles. Ty's protective instincts roar to the front as he becomes more invested in Kate's happiness while Kate flourishes by all the attention and comfort Ty lavishes on her. \n "When she pressed her face against his chest he wanted to give her everything. He'd never, ever felt that before." \n What did you think of their relationship and the path Dangerfield choose to take them down, Mandi? \n Mandi: I thought their relationship was so well-developed. I love the balance of erotic scenes with courtship and learning about Ty and Kate's background and establishing a foundation for their relationship. I've read a few other Eve Dangerfield books and she is an author that has now made my "anticipation list." \n Grade: B+ \n Tori: A personable cast of secondary characters are used to push Kate and Ty forward as individuals and as a couple. The Derby team not only gives Kate a much-needed boost of self-confidence to grab for what she wants, but also the courage to walk away. I loved their banter , energy, and the hidden dynamics of Kate's relationship with them that Eve teases out. \n Eve Dangerfield is definitely on my list of authors to watch for \n Tori's Favorite Quotes: "If I fuck you, you'll think all your prayers have been answered. I'll make you see god, Middleton. I'll make you think I am god." \n "You're so behind on the oral sex ratio it's not even funny." \n Tori's Grade: B+</td>
+    </tr>
+    <tr>
+      <th>1090859</th>
+      <td>c0e0fda388f87af0deffad748c9c8b67</td>
+      <td>36252773</td>
+      <td>Reviewed by Mandi and Tori \n Tyler Henderson, a 45 year old former golden boy with the personality of the grinch, just wants to be called daddy but isn't sure how to ask without sounding like a pervert. \n Kate 'Middleton' McGrath, a 25 year old engineer who looks and dresses like Lolita just happens to be looking for a daddy. \n Kate knows Ty would be the perfect daddy for her fantasies, but she's pretty sure he can't stand her. That is until a business trip, one too many drinks, and a case of mistaken identity shows them just how good it can be between them. \n As Ty and Kate explore their mutual kinks, acting out all their fantasies, their feelings for one another begin to deepen. When Ty has a chance to prove he's all in, he fails. Now he has to convince Kate that not only can he be her daddy...he can also be her man. \n Tori: I have never been one for the daddy kink. Most erotic romances I've encountered portray it as 24/7 acting like a baby and that's just not for me. However, I have been a fan of Eve Dangerfield's racy contemps since reading her debut, Degrees of Control, and more than willing to give this one a shot. And I'm so glad I did. Act Your Age is a sexy, humorous, and bittersweet opposite attraction erotic romance that places its focus more on the characters and their issues rather than the kink the storyline is built around. Dangerfield has a fantastic voice that creates a sense of comraderie between the reader and her characters. She writes about everyday people, with regular lives and problems who like kinky sex. The angst levels are fairly low with some drama but nothing over the top \n Heavily character driven, Dangerfield introduces us to our hero and heroine, Ty Henderson and Kate McGrath, setting up the storyline while allowing us ample time to get to know them. I found both of them to be delightfully messy contradictions. I laughed while cringing at the two of them more often than not at their awkward and HAWT scenes. Ty works at a large engineering firm where Kate was recently hired on as an engineer. Though he isn't her immediate boss, he is higher up the chain of command than she is. Still recovering from a bad break up, Ty stomps around like a grumpy butthead with one leg in the grave. Drinking too much and avoiding the home he shared with his cheating ex fiancee, Ty's attraction to Kate only makes him angry and he directs all that anger towards her. \n Ty didn't think Middleton was a great girl. He thought Middleton was a pain in the ass. Waltzing around with her shiny hair and long legs and her throaty voice, being cuter than a fistful of buttons. Where did she get off? \n Kate is young, energetic, and flints around like Pollyanna on acid. She indulges in juvenile clothing and brings homemade baked good to the office on a daily basis. Suffering from ADHD that resulted in some bad childhood behavior and teasing, Kate now takes Ritalin and quietly pines for some positive attention from Ty. \n That he didn't like her always would have hurt. That he didn't like her and she was so hopelessly attracted to him burned. In the kind of all-encompassing obsession she'd only ever read about in books, but unlike books, her obsession never went anywhere or did anything. She just got sweaty palms whenever she saw him and it made her work-life very awkward. Her obsession wasn't even original. Everyone had a crush on Tyler Henderson. Women, gay men, straight men, more perceptive animals. It was like having a crush on a Hemsworth brother--it made you basic as hell \n What did you think of Kate and Ty in the beginning, Mandi? \n Mandi: Before I get into our joint review, I wanted to take a quick minute to highlight what this author and Kate, our heroine, means when she says she likes daddy kink. Maybe you have never read this kink, or you have a preconceived notion as to what it is. So in Kate's words: \n When I imagine daddy-daughter play, I imagine entering a state of mind in which I'm entirely innocent and the man I'm with corrupts and disciplines me. To me, this is power play, not a desire to experience incest or genuine trauma. I'm NOT into the extreme aspects of age-play or daddy-daughter kink (infantilization, pacifiers, baby-talk, or nappies). I consider myself more of a submissive with a twist. \n Let me note, their main form of role-playing is Ty is the "step dad" and Kate is the "teenage daughter home alone while mom is at work." There are times Kate pretends she doesn't want her "step dad" to have sex with her and he forces himself. It's all 100% consensual and they are both totally into it - but I wanted to make sure you know that, in case that is not your jam. \n I ended up liking this book a lot. It's over the top sometimes. The book got nicknamed, "The baseball bat" book on Twitter because I tweeted this quote: \n Erect, his penis was approximately the width of a baseball bat, properly and ridiculously huge. "What the heck...?" \n Yes, that is some girth but don't let this over the top description deter you. This is a very erotic, and explicit book but it's not all just sex - the relationship is built up very well. But first, the sex. They go heavy into role-playing and Kate calling Ty daddy. Remember they are in role play here.... \n "Say that again." Kate's heart leapt into her mouth. Was he angry? Was he going to yell at her? "I-I like sucking your cock." \n "Little girl." His voice was icy with disdain. "Say what you just called me again." \n But she couldn't. Instead she asked, "Are you mad at me?" \n There was a silence more loaded than all the guns in a gun-nut's gun locker. Then he spoke. \n "No, but I want you to say it again." \n "But I--" \n "Not what I want to hear, sweetheart." He gently forced her head back, not hard, but firm. His manhandling and the sense of powerlessness it arose in her made Kate quiver. How did you know? she wanted to ask. I never told you, how did you know? But, she supposed in the scheme of things that didn't matter as much as following orders. She swallowed. \n "I like sucking your cock, Daddy." \n I could go on and on with sex quotes - there are a lot! But there is more to this story. The author takes her time letting us get to know Kate. From initial reaction, I thought disney princess. But as the author peels back her layers - we learn she was diagnosed with severe ADHD when she was seventeen and has been on Ritalin ever since. She didn't have that great of a childhood. She struggles with friendships. She struggles with being assertive and doesn't really know who she is. \n On the other hand, Ty was dumped by his fiancee two years prior for not wanting to have kids. He has had a hard time getting over her. He likes to be assertive and in control and when he does finally go in the bedroom with Kate, he can't believe he actually found someone who can fulfill his desires - same with her. \n Kate eventually finds female friendships, and loses some too - for so many pages devoted to spanking, we dive into complicated, personal issues as well. I appreciated that. \n Tori, aside from the erotic scenes, did you find their relationship solid and well done? \n Tori: Yes. I loved their relationship. The imperfections, the miscommunications, and all the jagged little edges only made it more real and endearing to me. Dangerfield doesn't pull any punches with this couple as she guides us through their relationship using dual narrative. We see them at the best and worst. I enjoy when an author tries to convince me two people who seem completely wrong for one another are actually perfect together. Dangerfield gently cuts through all the artifice and layers, letting us see what she's always known-that our protagonists are indeed perfect for one another. \n Ty and Kate grow so much during this story. Both of them have problems with communication and their sexuality. Kate is already working towards inner acceptance while Ty is just beginning. Their age difference and working relationship is a huge stumbling block for Ty. He's already lost one woman he loved and he is scared to take another risk. \n Middleton crawled into my hotel bed because she's attracted to old men and I was in the right place at the right time. We start dating. The sex is good. Her family think she's insane for fucking someone old enough to be her dad. All my friends think I'm having a mid-life crisis. People whisper behind our backs at parties. The age gap sounds bad and she's so baby-faced it looks worse. The fact I used to be her boss is the cherry on top of the shit sundae. Doesn't stop us from fucking one another, but the smell of it taints everything like when there's a dead rat in your ventilation. A few years pass, I get even fucking older, my hair starts to fall out, and my dick doesn't work. Middleton meets a guy her own age. She leaves me. I die alone. \n The erotic sexual components are exquisitely written and blend perfectly with the building romance and main storyline. Dangerfield hits all the emotional tones in here. While their role playing starts out as just a way to scratch each others itches, they soon they begin to take on the personalities in those roles. Ty's protective instincts roar to the front as he becomes more invested in Kate's happiness while Kate flourishes by all the attention and comfort Ty lavishes on her. \n "When she pressed her face against his chest he wanted to give her everything. He'd never, ever felt that before." \n What did you think of their relationship and the path Dangerfield choose to take them down, Mandi? \n Mandi: I thought their relationship was so well-developed. I love the balance of erotic scenes with courtship and learning about Ty and Kate's background and establishing a foundation for their relationship. I've read a few other Eve Dangerfield books and she is an author that has now made my "anticipation list." \n Grade: B+ \n Tori: A personable cast of secondary characters are used to push Kate and Ty forward as individuals and as a couple. The Derby team not only gives Kate a much-needed boost of self-confidence to grab for what she wants, but also the courage to walk away. I loved their banter , energy, and the hidden dynamics of Kate's relationship with them that Eve teases out. \n Eve Dangerfield is definitely on my list of authors to watch for. \n Tori's Grade: B+</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 **This one is clearly written by the same person and isn't an exact duplicate only due to some typos:**
 ⬇️
@@ -488,6 +637,7 @@ df_goodreads.query('(book_number > 1) & (review_length > 200)').sort_values('boo
 ```python
 df_goodreads.loc[[234437,1143023], ['user_id', 'book_id', 'review_text']]
 ```
+
 <div>
 <table border="1" class="dataframe">
   <thead>
@@ -520,6 +670,7 @@ df_goodreads.loc[[234437,1143023], ['user_id', 'book_id', 'review_text']]
 ```python
 df_goodreads.loc[[932841,853033], ['user_id', 'book_id', 'review_text']]
 ```
+
 <div>
 <table border="1" class="dataframe">
   <thead>
@@ -552,6 +703,7 @@ df_goodreads.loc[[932841,853033], ['user_id', 'book_id', 'review_text']]
 ```python
 df_goodreads.loc[[732165,893342], ['user_id', 'book_id', 'review_text']]
 ```
+
 <div>
 <table border="1" class="dataframe">
   <thead>
@@ -578,6 +730,153 @@ df_goodreads.loc[[732165,893342], ['user_id', 'book_id', 'review_text']]
   </tbody>
 </table>
 </div>
+
+```python
+#free memory: the LSH index and the signatures are no longer needed
+del lsh_object
+df_goodreads.drop(columns='minhash', inplace=True)
+gc.collect()
+```
+
+```text
+12254806
+```
+
+### Checking the Matches
+
+LSH only proposes candidate pairs, so some of them are false positives.
+
+To get the final counts, we can check each pair with the exact Jaccard similarity and keep it only if it reaches the threshold.
+The true positive pairs confirmed by Jaccard are then merged into clusters, so a review similar to several others ends up in a single cluster.
+
+Note that this check only removes false positives. Near-duplicate pairs that LSH missed (false negatives) cannot be recovered at this step.
+
+```python
+#get the cleaned text of each review by its id
+texts = dict(zip(df_goodreads['review_id'], df_goodreads['clean_review_text']))
+```
+
+```python
+#choose one representative review for each distinct cleaned text, so identical texts are scored only once
+df_goodreads['representative_id'] = df_goodreads.groupby('clean_review_text')['review_id'].transform('first')
+representative_dict = dict(zip(df_goodreads['review_id'], df_goodreads['representative_id']))
+representative_ids = set(df_goodreads['representative_id'])
+```
+
+```python
+#get the LSH candidates of a representative of each match
+representative_candidates = {_id: {representative_dict[match] for match in near_duplicates_dict[_id]} for _id in representative_ids}
+```
+
+```python
+#calculate the exact Jaccard similarity for each candidate pair of representative documents
+scored_pairs = lsh_instance.score_candidates(texts=texts, candidates=representative_candidates)
+print(f'How many candidate pairs are there to check?\n{len(scored_pairs)}')
+```
+
+```text
+How many candidate pairs are there to check?
+4184
+```
+
+```python
+#keep only the pairs that reach the similarity threshold
+verified_pairs = [(a, b) for a, b, similarity in scored_pairs if similarity >= JACCARD_THRESHOLD]
+print(f'How many of them are confirmed by the exact Jaccard similarity of at least {JACCARD_THRESHOLD}?\n{len(verified_pairs)} ({len(verified_pairs) / max(len(scored_pairs), 1):.1%})')
+```
+
+```text
+How many of them are confirmed by the exact Jaccard similarity of at least 0.8?
+3520 (84.1%)
+```
+
+```python
+#merge the confirmed pairs and the links to identical texts into groups, so every review id gets a group id
+identical_text_pairs = [(_id, rep) for _id, rep in representative_dict.items() if _id != rep]
+final_groups = lsh_instance.connected_components(ids=texts.keys(), pairs=verified_pairs + identical_text_pairs)
+df_goodreads['verified_group'] = df_goodreads['review_id'].map(final_groups)
+```
+
+**Let's go back to the two questions from above. Do the numbers change once only the confirmed matches are kept?**
+
+```python
+#count again by user and by book, now using the confirmed groups
+verified_user_counts = df_goodreads.groupby(['user_id', 'verified_group'])['review_id'].transform('size')
+verified_book_counts = df_goodreads.groupby(['book_id', 'verified_group'])['review_id'].transform('size')
+print(f'After checking: how many duplicated and near-duplicated review texts are there from the same user about different books?\n{(verified_user_counts > 1).sum()}')
+print(f'After checking: how many duplicated and near-duplicated review texts are there from different users about the same book?\n{(verified_book_counts > 1).sum()}')
+```
+
+```text
+After checking: how many duplicated and near-duplicated review texts are there from the same user about different books?
+16298
+After checking: how many duplicated and near-duplicated review texts are there from different users about the same book?
+1529
+```
+
+**Here is one of the verified groups. The texts are not identical, but they were put in the same group:** ⬇️
+
+```python
+#pick a small verified group that contains different texts, not only identical ones
+group_size = df_goodreads.groupby('verified_group')['review_id'].transform('size')
+text_variants = df_goodreads.groupby('verified_group')['clean_review_text'].transform('nunique')
+sample_group = df_goodreads.loc[(text_variants > 1) & (group_size == 5), 'verified_group'].iloc[5]
+df_goodreads.loc[df_goodreads['verified_group'] == sample_group, ['user_id', 'book_id', 'review_text']]
+```
+
+<div>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>user_id</th>
+      <th>book_id</th>
+      <th>review_text</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>3134</th>
+      <td>0d344a261de9ab42e62cf9b3b7c52cc4</td>
+      <td>18170039</td>
+      <td>This novella did no favors for my opinion toward Aspen. I feel a mighty need to punch someone in the face now. \n ______________________________ \n This review can also be found at The Starry-Eyed Revue. \n **I'm reviewing this series as a whole and there are likely to be spoilers below. If you haven't started the series yet, and you actually care about the outcome, I suggest you don't read any further.** \n I never had any intention of reading this series. After the fiasco with Wendy Darling and the author and her agent -- publicist? Idk...it's been so long that I can't remember -- I immediately shelved all the books by this author as "not in this lifetime". But I was perusing my library's audiobook selection, and I was bored and couldn't decide what to listen to next when I came across The Selection. And from there, a very bad idea was born. \n I didn't even know the final book was releasing soon when I picked up the first two books plus the novellas...that's how little attention I've paid to this series. And yet, I still embarked upon my mission to read the series in its entirety, knowing what a train wreck it would be. And it was: you know it's terrible, you're cringing the entire time, and yet you just. Can't. Look. Away. \n I don't enjoy reality TV...at all. I don't find it even mildly entertaining usually, but if I discover it already on the television when I sit down, I admit that it's very addictive and hard to look away from. Which is one of the reasons I detest it so much...what a time suck! Such was my experience with this series. I didn't want to keep reading about these girls and all their drama or that love triangle of doom. After all, I despise The Bachelor and this story is that show's premise in book form. But morbid curiosity just wouldn't let me pass up this series. \n I think one of the things that helped me maintain my sanity was the fact that I was listening to the audio instead of wasting my precious reading time. I've listened to several audiobooks narrated by Amy Rubinate, so I know that I like her narration style. I can't say that I was impressed with her performance this time around, though I think she did portray America as the whiney, sniveling mess of a girl she is with precision. However, every time she voiced Maxon's dialogue, I was reminded of how she made Cole sound in the Everneath series, and it made me sad that I wasn't re-listening to that series instead of this one. \n Things I loathed about this story: \n 1. America's immaturity when it came to love and other people's feelings. This girl was already planning to marry her first love, so one would expect her to have some sense of what is expected in an adult relationship. Instead, she strings her first love along while trying to decipher her feelings for the Crown Prince...while also stringing him along. America's constant back-and-forth -- during the ENTIRE series -- drove me nuts. I wanted both guys to find out about each other and say to hell with her. \n 2. The fact that America was essentially set up to become a martyr, that everything just perfectly aligned for her to be the perfect choice. Of course the King would be an evil blow-hard who would make things difficult for America at every turn. Of course he didn't want her to succeed. Of course because of her willingness to stand up to him, she became the people's favorite. Of course her own father would be a rebel himself, as would Caesar Flickerman, er, sorry...I mean Gavril whatever his name was. \n 3. All the drama and misunderstandings. Miscommunication in a story is one thing, but when you let every situation get out of hand because no one can apologize or admit fault, it becomes beyond annoying. Create tension in the story some other way because you aren't doing your characters any favors with this type of behavior. \n 4. How the story wrapped up so perfectly and yet left so much unsaid. First, so a life-or-death situation negates any betrayal felt five minutes before? Really, Maxon? Also, maybe I missed it in my haste to be done with this series for good, but what happened to the rebels? Was there even a funeral for Maxon's parents before the wedding? How did Aspen and Lucy come to be so close so quickly? So many unanswered questions! Grrr. \n 5. The fact that this contemporary story about a love triangle was trying to masquerade as a dystopian novel. Yeah, no. Throwing in a tyrant of a king and some rebels does not a dystopian story make. \n There's more but if I list all of my complaints, we'll be here all day. \n Redeeming factors: \n 1. I actually did appreciate that this story showcased that first love =/= true love. (Not always, anyway.) It may have taken the characters forever to get to this point, but they did...eventually. \n 2. The competition between the girls was fleshed out and eventually bordered on friendship, not just a group of girls all vying for one guy's attention. This, too, took awhile, but they got there. \n 3. Pretty covers with pretty girls in dresses that actually do have significance to the story. I have to admit, this series would look gorgeous on my shelf. If I had room for a series that I knew I'd never read again. \n I obviously didn't love these books, but I did find them at least somewhat entertaining, hence my ability to actually finish the series. I can understand the appeal of these books, but it's clear they were not written with someone like me in mind. I knew that from the get-go, and yet I still endeavored to make the most of this series. I have no one to blame but myself. \n GIF it to me straight: \n Yep. I couldn't have said it better myself.</td>
+    </tr>
+    <tr>
+      <th>3138</th>
+      <td>0d344a261de9ab42e62cf9b3b7c52cc4</td>
+      <td>15820748</td>
+      <td>This novella added nothing to the storyline, except to display just how clueless Maxon is when it comes to love and emotional ties. \n ______________________________ \n This review can also be found at The Starry-Eyed Revue. \n **I'm reviewing this series as a whole and there are likely to be spoilers below. If you haven't started the series yet, and you actually care about the outcome, I suggest you don't read any further.** \n I never had any intention of reading this series. After the fiasco with Wendy Darling and the author and her agent -- publicist? Idk...it's been so long that I can't remember -- I immediately shelved all the books by this author as "not in this lifetime". But I was perusing my library's audiobook selection, and I was bored and couldn't decide what to listen to next when I came across The Selection. And from there, a very bad idea was born. \n I didn't even know the final book was releasing soon when I picked up the first two books plus the novellas...that's how little attention I've paid to this series. And yet, I still embarked upon my mission to read the series in its entirety, knowing what a train wreck it would be. And it was: you know it's terrible, you're cringing the entire time, and yet you just. Can't. Look. Away. \n I don't enjoy reality TV...at all. I don't find it even mildly entertaining usually, but if I discover it already on the television when I sit down, I admit that it's very addictive and hard to look away from. Which is one of the reasons I detest it so much...what a time suck! Such was my experience with this series. I didn't want to keep reading about these girls and all their drama or that love triangle of doom. After all, I despise The Bachelor and this story is that show's premise in book form. But morbid curiosity just wouldn't let me pass up this series. \n I think one of the things that helped me maintain my sanity was the fact that I was listening to the audio instead of wasting my precious reading time. I've listened to several audiobooks narrated by Amy Rubinate, so I know that I like her narration style. I can't say that I was impressed with her performance this time around, though I think she did portray America as the whiney, sniveling mess of a girl she is with precision. However, every time she voiced Maxon's dialogue, I was reminded of how she made Cole sound in the Everneath series, and it made me sad that I wasn't re-listening to that series instead of this one. \n Things I loathed about this story: \n 1. America's immaturity when it came to love and other people's feelings. This girl was already planning to marry her first love, so one would expect her to have some sense of what is expected in an adult relationship. Instead, she strings her first love along while trying to decipher her feelings for the Crown Prince...while also stringing him along. America's constant back-and-forth -- during the ENTIRE series -- drove me nuts. I wanted both guys to find out about each other and say to hell with her. \n 2. The fact that America was essentially set up to become a martyr, that everything just perfectly aligned for her to be the perfect choice. Of course the King would be an evil blow-hard who would make things difficult for America at every turn. Of course he didn't want her to succeed. Of course because of her willingness to stand up to him, she became the people's favorite. Of course her own father would be a rebel himself, as would Caesar Flickerman, er, sorry...I mean Gavril whatever his name was. \n 3. All the drama and misunderstandings. Miscommunication in a story is one thing, but when you let every situation get out of hand because no one can apologize or admit fault, it becomes beyond annoying. Create tension in the story some other way because you aren't doing your characters any favors with this type of behavior. \n 4. How the story wrapped up so perfectly and yet left so much unsaid. First, so a life-or-death situation negates any betrayal felt five minutes before? Really, Maxon? Also, maybe I missed it in my haste to be done with this series for good, but what happened to the rebels? Was there even a funeral for Maxon's parents before the wedding? How did Aspen and Lucy come to be so close so quickly? So many unanswered questions! Grrr. \n 5. The fact that this contemporary story about a love triangle was trying to masquerade as a dystopian novel. Yeah, no. Throwing in a tyrant of a king and some rebels does not a dystopian story make. \n There's more but if I list all of my complaints, we'll be here all day. \n Redeeming factors: \n 1. I actually did appreciate that this story showcased that first love =/= true love. (Not always, anyway.) It may have taken the characters forever to get to this point, but they did...eventually. \n 2. The competition between the girls was fleshed out and eventually bordered on friendship, not just a group of girls all vying for one guy's attention. This, too, took awhile, but they got there. \n 3. Pretty covers with pretty girls in dresses that actually do have significance to the story. I have to admit, this series would look gorgeous on my shelf. If I had room for a series that I knew I'd never read again. \n I obviously didn't love these books, but I did find them at least somewhat entertaining, hence my ability to actually finish the series. I can understand the appeal of these books, but it's clear they were not written with someone like me in mind. I knew that from the get-go, and yet I still endeavored to make the most of this series. I have no one to blame but myself. \n GIF it to me straight: \n Yep. I couldn't have said it better myself.</td>
+    </tr>
+    <tr>
+      <th>3139</th>
+      <td>0d344a261de9ab42e62cf9b3b7c52cc4</td>
+      <td>15844362</td>
+      <td>This review can also be found at The Starry-Eyed Revue. \n **I'm reviewing this series as a whole and there are likely to be spoilers below. If you haven't started the series yet, and you actually care about the outcome, I suggest you don't read any further.** \n I never had any intention of reading this series. After the fiasco with Wendy Darling and the author and her agent -- publicist? Idk...it's been so long that I can't remember -- I immediately shelved all the books by this author as "not in this lifetime". But I was perusing my library's audiobook selection, and I was bored and couldn't decide what to listen to next when I came across The Selection. And from there, a very bad idea was born. \n I didn't even know the final book was releasing soon when I picked up the first two books plus the novellas...that's how little attention I've paid to this series. And yet, I still embarked upon my mission to read the series in its entirety, knowing what a train wreck it would be. And it was: you know it's terrible, you're cringing the entire time, and yet you just. Can't. Look. Away. \n I don't enjoy reality TV...at all. I don't find it even mildly entertaining usually, but if I discover it already on the television when I sit down, I admit that it's very addictive and hard to look away from. Which is one of the reasons I detest it so much...what a time suck! Such was my experience with this series. I didn't want to keep reading about these girls and all their drama or that love triangle of doom. After all, I despise The Bachelor and this story is that show's premise in book form. But morbid curiosity just wouldn't let me pass up this series. \n I think one of the things that helped me maintain my sanity was the fact that I was listening to the audio instead of wasting my precious reading time. I've listened to several audiobooks narrated by Amy Rubinate, so I know that I like her narration style. I can't say that I was impressed with her performance this time around, though I think she did portray America as the whiney, sniveling mess of a girl she is with precision. However, every time she voiced Maxon's dialogue, I was reminded of how she made Cole sound in the Everneath series, and it made me sad that I wasn't re-listening to that series instead of this one. \n Things I loathed about this story: \n 1. America's immaturity when it came to love and other people's feelings. This girl was already planning to marry her first love, so one would expect her to have some sense of what is expected in an adult relationship. Instead, she strings her first love along while trying to decipher her feelings for the Crown Prince...while also stringing him along. America's constant back-and-forth -- during the ENTIRE series -- drove me nuts. I wanted both guys to find out about each other and say to hell with her. \n 2. The fact that America was essentially set up to become a martyr, that everything just perfectly aligned for her to be the perfect choice. Of course the King would be an evil blow-hard who would make things difficult for America at every turn. Of course he didn't want her to succeed. Of course because of her willingness to stand up to him, she became the people's favorite. Of course her own father would be a rebel himself, as would Caesar Flickerman, er, sorry...I mean Gavril whatever his name was. \n 3. All the drama and misunderstandings. Miscommunication in a story is one thing, but when you let every situation get out of hand because no one can apologize or admit fault, it becomes beyond annoying. Create tension in the story some other way because you aren't doing your characters any favors with this type of behavior. \n 4. How the story wrapped up so perfectly and yet left so much unsaid. First, so a life-or-death situation negates any betrayal felt five minutes before? Really, Maxon? Also, maybe I missed it in my haste to be done with this series for good, but what happened to the rebels? Was there even a funeral for Maxon's parents before the wedding? How did Aspen and Lucy come to be so close so quickly? So many unanswered questions! Grrr. \n 5. The fact that this contemporary story about a love triangle was trying to masquerade as a dystopian novel. Yeah, no. Throwing in a tyrant of a king and some rebels does not a dystopian story make. \n There's more but if I list all of my complaints, we'll be here all day. \n Redeeming factors: \n 1. I actually did appreciate that this story showcased that first love =/= true love. (Not always, anyway.) It may have taken the characters forever to get to this point, but they did...eventually. \n 2. The competition between the girls was fleshed out and eventually bordered on friendship, not just a group of girls all vying for one guy's attention. This, too, took awhile, but they got there. \n 3. Pretty covers with pretty girls in dresses that actually do have significance to the story. I have to admit, this series would look gorgeous on my shelf. If I had room for a series that I knew I'd never read again. \n I obviously didn't love these books, but I did find them at least somewhat entertaining, hence my ability to actually finish the series. I can understand the appeal of these books, but it's clear they were not written with someone like me in mind. I knew that from the get-go, and yet I still endeavored to make the most of this series. I have no one to blame but myself. \n GIF it to me straight: \n Yep. I couldn't have said it better myself.</td>
+    </tr>
+    <tr>
+      <th>3402</th>
+      <td>0d344a261de9ab42e62cf9b3b7c52cc4</td>
+      <td>14748094</td>
+      <td>Why am I doing this to myself? \n ----------- \n Listened to a library audio version. Horrible but addictive. Like a terrible, terrible soap opera. The kind even my own mother wouldn't watch. \n The plan is to see it through to the end and then review the trilogy together. I'd rather stab myself in the eye, but for some reason, I feel the urge to rant about these, even though I had plenty of warning beforehand. *le sigh* \n ______________________________ \n This review can also be found at The Starry-Eyed Revue. \n **I'm reviewing this series as a whole and there are likely to be spoilers below. If you haven't started the series yet, and you actually care about the outcome, I suggest you don't read any further.** \n I never had any intention of reading this series. After the fiasco with Wendy Darling and the author and her agent -- publicist? Idk...it's been so long that I can't remember -- I immediately shelved all the books by this author as "not in this lifetime". But I was perusing my library's audiobook selection, and I was bored and couldn't decide what to listen to next when I came across The Selection. And from there, a very bad idea was born. \n I didn't even know the final book was releasing soon when I picked up the first two books plus the novellas...that's how little attention I've paid to this series. And yet, I still embarked upon my mission to read the series in its entirety, knowing what a train wreck it would be. And it was: you know it's terrible, you're cringing the entire time, and yet you just. Can't. Look. Away. \n I don't enjoy reality TV...at all. I don't find it even mildly entertaining usually, but if I discover it already on the television when I sit down, I admit that it's very addictive and hard to look away from. Which is one of the reasons I detest it so much...what a time suck! Such was my experience with this series. I didn't want to keep reading about these girls and all their drama or that love triangle of doom. After all, I despise The Bachelor and this story is that show's premise in book form. But morbid curiosity just wouldn't let me pass up this series. \n I think one of the things that helped me maintain my sanity was the fact that I was listening to the audio instead of wasting my precious reading time. I've listened to several audiobooks narrated by Amy Rubinate, so I know that I like her narration style. I can't say that I was impressed with her performance this time around, though I think she did portray America as the whiney, sniveling mess of a girl she is with precision. However, every time she voiced Maxon's dialogue, I was reminded of how she made Cole sound in the Everneath series, and it made me sad that I wasn't re-listening to that series instead of this one. \n Things I loathed about this story: \n 1. America's immaturity when it came to love and other people's feelings. This girl was already planning to marry her first love, so one would expect her to have some sense of what is expected in an adult relationship. Instead, she strings her first love along while trying to decipher her feelings for the Crown Prince...while also stringing him along. America's constant back-and-forth -- during the ENTIRE series -- drove me nuts. I wanted both guys to find out about each other and say to hell with her. \n 2. The fact that America was essentially set up to become a martyr, that everything just perfectly aligned for her to be the perfect choice. Of course the King would be an evil blow-hard who would make things difficult for America at every turn. Of course he didn't want her to succeed. Of course because of her willingness to stand up to him, she became the people's favorite. Of course her own father would be a rebel himself, as would Caesar Flickerman, er, sorry...I mean Gavril whatever his name was. \n 3. All the drama and misunderstandings. Miscommunication in a story is one thing, but when you let every situation get out of hand because no one can apologize or admit fault, it becomes beyond annoying. Create tension in the story some other way because you aren't doing your characters any favors with this type of behavior. \n 4. How the story wrapped up so perfectly and yet left so much unsaid. First, so a life-or-death situation negates any betrayal felt five minutes before? Really, Maxon? Also, maybe I missed it in my haste to be done with this series for good, but what happened to the rebels? Was there even a funeral for Maxon's parents before the wedding? How did Aspen and Lucy come to be so close so quickly? So many unanswered questions! Grrr. \n 5. The fact that this contemporary story about a love triangle was trying to masquerade as a dystopian novel. Yeah, no. Throwing in a tyrant of a king and some rebels does not a dystopian story make. \n There's more but if I list all of my complaints, we'll be here all day. \n Redeeming factors: \n 1. I actually did appreciate that this story showcased that first love =/= true love. (Not always, anyway.) It may have taken the characters forever to get to this point, but they did...eventually. \n 2. The competition between the girls was fleshed out and eventually bordered on friendship, not just a group of girls all vying for one guy's attention. This, too, took awhile, but they got there. \n 3. Pretty covers with pretty girls in dresses that actually do have significance to the story. I have to admit, this series would look gorgeous on my shelf. If I had room for a series that I knew I'd never read again. \n I obviously didn't love these books, but I did find them at least somewhat entertaining, hence my ability to actually finish the series. I can understand the appeal of these books, but it's clear they were not written with someone like me in mind. I knew that from the get-go, and yet I still endeavored to make the most of this series. I have no one to blame but myself. \n GIF it to me straight: \n Yep. I couldn't have said it better myself.</td>
+    </tr>
+    <tr>
+      <th>3463</th>
+      <td>0d344a261de9ab42e62cf9b3b7c52cc4</td>
+      <td>10507293</td>
+      <td>Listened to a library audio version. Horrible but addictive. Like a terrible, terrible soap opera. The kind even my own mother wouldn't watch. \n The plan is to see it through to the end and then review the trilogy together. I'd rather stab myself in the eye, but for some reason, I feel the urge to rant about these, even though I had plenty of warning beforehand. *le sigh* \n ______________________________ \n This review can also be found at The Starry-Eyed Revue. \n **I'm reviewing this series as a whole and there are likely to be spoilers below. If you haven't started the series yet, and you actually care about the outcome, I suggest you don't read any further.** \n I never had any intention of reading this series. After the fiasco with Wendy Darling and the author and her agent -- publicist? Idk...it's been so long that I can't remember -- I immediately shelved all the books by this author as "not in this lifetime". But I was perusing my library's audiobook selection, and I was bored and couldn't decide what to listen to next when I came across The Selection. And from there, a very bad idea was born. \n I didn't even know the final book was releasing soon when I picked up the first two books plus the novellas...that's how little attention I've paid to this series. And yet, I still embarked upon my mission to read the series in its entirety, knowing what a train wreck it would be. And it was: you know it's terrible, you're cringing the entire time, and yet you just. Can't. Look. Away. \n I don't enjoy reality TV...at all. I don't find it even mildly entertaining usually, but if I discover it already on the television when I sit down, I admit that it's very addictive and hard to look away from. Which is one of the reasons I detest it so much...what a time suck! Such was my experience with this series. I didn't want to keep reading about these girls and all their drama or that love triangle of doom. After all, I despise The Bachelor and this story is that show's premise in book form. But morbid curiosity just wouldn't let me pass up this series. \n I think one of the things that helped me maintain my sanity was the fact that I was listening to the audio instead of wasting my precious reading time. I've listened to several audiobooks narrated by Amy Rubinate, so I know that I like her narration style. I can't say that I was impressed with her performance this time around, though I think she did portray America as the whiney, sniveling mess of a girl she is with precision. However, every time she voiced Maxon's dialogue, I was reminded of how she made Cole sound in the Everneath series, and it made me sad that I wasn't re-listening to that series instead of this one. \n Things I loathed about this story: \n 1. America's immaturity when it came to love and other people's feelings. This girl was already planning to marry her first love, so one would expect her to have some sense of what is expected in an adult relationship. Instead, she strings her first love along while trying to decipher her feelings for the Crown Prince...while also stringing him along. America's constant back-and-forth -- during the ENTIRE series -- drove me nuts. I wanted both guys to find out about each other and say to hell with her. \n 2. The fact that America was essentially set up to become a martyr, that everything just perfectly aligned for her to be the perfect choice. Of course the King would be an evil blow-hard who would make things difficult for America at every turn. Of course he didn't want her to succeed. Of course because of her willingness to stand up to him, she became the people's favorite. Of course her own father would be a rebel himself, as would Caesar Flickerman, er, sorry...I mean Gavril whatever his name was. \n 3. All the drama and misunderstandings. Miscommunication in a story is one thing, but when you let every situation get out of hand because no one can apologize or admit fault, it becomes beyond annoying. Create tension in the story some other way because you aren't doing your characters any favors with this type of behavior. \n 4. How the story wrapped up so perfectly and yet left so much unsaid. First, so a life-or-death situation negates any betrayal felt five minutes before? Really, Maxon? Also, maybe I missed it in my haste to be done with this series for good, but what happened to the rebels? Was there even a funeral for Maxon's parents before the wedding? How did Aspen and Lucy come to be so close so quickly? So many unanswered questions! Grrr. \n 5. The fact that this contemporary story about a love triangle was trying to masquerade as a dystopian novel. Yeah, no. Throwing in a tyrant of a king and some rebels does not a dystopian story make. \n There's more but if I list all of my complaints, we'll be here all day. \n Redeeming factors: \n 1. I actually did appreciate that this story showcased that first love =/= true love. (Not always, anyway.) It may have taken the characters forever to get to this point, but they did...eventually. \n 2. The competition between the girls was fleshed out and eventually bordered on friendship, not just a group of girls all vying for one guy's attention. This, too, took awhile, but they got there. \n 3. Pretty covers with pretty girls in dresses that actually do have significance to the story. I have to admit, this series would look gorgeous on my shelf. If I had room for a series that I knew I'd never read again. \n I obviously didn't love these books, but I did find them at least somewhat entertaining, hence my ability to actually finish the series. I can understand the appeal of these books, but it's clear they were not written with someone like me in mind. I knew that from the get-go, and yet I still endeavored to make the most of this series. I have no one to blame but myself. \n GIF it to me straight: \n Yep. I couldn't have said it better myself.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+```python
+print(f'How many distinct reviews are left after merging identical and near-duplicated texts?\n{df_goodreads['verified_group'].nunique()} out of {df_goodreads.shape[0]}')
+```
+
+```text
+How many distinct reviews are left after merging identical and near-duplicated texts?
+1357868 out of 1378033
+```
 
 ### Conclusion
 **Locality-Sensitive Hashing** is an effective technique for detecting near-duplicates, providing a balance between reliability and computational efficiency, although as any probabilistic approach it may produce some false positives and false negatives.

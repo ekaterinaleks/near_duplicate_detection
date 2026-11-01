@@ -1,0 +1,7 @@
+datasketch
+num2words
+pandas
+pandarallel
+kaggle
+jupyter
+tqdm
