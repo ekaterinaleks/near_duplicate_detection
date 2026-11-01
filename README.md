@@ -2,12 +2,12 @@
 Finding near-duplicate texts at scale with **MinHash + Locality-Sensitive Hashing**, applied to 1.38M Goodreads reviews in ![Static Python Badge](https://img.shields.io/badge/python-FBD343?style=plastic&logo=python&logoColor=234989bc).
 
 ## 🔎 Key Results
-| Duplicated review texts | Exact matches | Exact + near-duplicates (LSH) |
+| Duplicated review texts | Exact matches | Exact + near-duplicates (LSH, checked with Jaccard) |
 |---|---|---|
-| Same user, different books | 13,788 | 16,180 |
-| Different users, same book | 601 | 1,347 |
+| Same user, different books | 13,788 | 16,298 |
+| Different users, same book | 601 | 1,529 |
 
-LSH surfaces reposts with typo fixes, reworded intros, edition-specific versions and blog-traffic spam that exact matching misses, while avoiding the ~950 billion pairwise comparisons of brute-force Jaccard similarity.
+LSH surfaces reposts with typo fixes, reworded intros, edition-specific versions and blog-traffic spam that exact matching misses, while avoiding the ~950 billion pairwise comparisons of brute-force Jaccard similarity. Each LSH candidate pair (4,184 of them) is then checked with the exact Jaccard similarity (threshold 0.8), which confirms 84% of them.
 
 ## 🗃️ Directories:
 
